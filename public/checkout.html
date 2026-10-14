@@ -1,0 +1,248 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Test Checkout</title>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fa;
+      margin: 0;
+      padding: 30px 16px;
+      color: #172033;
+    }
+
+    main {
+      max-width: 520px;
+      margin: auto;
+      padding: 24px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    input, select, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      border-radius: 7px;
+    }
+
+    input, select {
+      border: 1px solid #bbb;
+    }
+
+    button {
+      margin-top: 22px;
+      border: 0;
+      background: #185adb;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #status {
+      margin-top: 20px;
+      padding: 12px;
+      background: #eef2f8;
+      border-radius: 7px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .notice {
+      font-size: 13px;
+      color: #765600;
+      background: #fff6d9;
+      padding: 10px;
+      border-radius: 7px;
+    }
+  </style>
+</head>
+
+<body>
+<main>
+  <h2>Subscription Test Checkout</h2>
+
+  <p class="notice">
+    Local testing only. Do not publish this page with a real product
+    API key or deploy it as a production checkout.
+  </p>
+
+  <form id="checkoutForm">
+    <label for="productKey">Product API Key</label>
+    <input
+      id="productKey"
+      type="password"
+      autocomplete="off"
+      required
+      placeholder="Paste PRODUCT_API_KEY"
+    >
+
+    <label for="userId">Test User ID</label>
+    <input id="userId" value="user-123" maxlength="150" required>
+
+    <label for="plan">Select Plan</label>
+    <select id="plan">
+      <option value="PRO">PRO — ₹599 for 90 days</option>
+      <option value="ELITE">ELITE — ₹999 for 180 days</option>
+    </select>
+
+    <button id="payButton" type="submit">
+      Create Order & Pay
+    </button>
+  </form>
+
+  <div id="status" role="status" aria-live="polite">
+    Ready to test.
+  </div>
+</main>
+
+<script>
+  const form = document.getElementById('checkoutForm');
+  const button = document.getElementById('payButton');
+  const statusBox = document.getElementById('status');
+
+  function showStatus(message) {
+    statusBox.textContent = message;
+  }
+
+  async function apiRequest(url, options) {
+    const response = await fetch(url, options);
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || `Request failed with status ${response.status}`
+      );
+    }
+
+    return data;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+
+    const productKey =
+      document.getElementById('productKey').value.trim();
+
+    const externalUserId =
+      document.getElementById('userId').value.trim();
+
+    const planCode =
+      document.getElementById('plan').value;
+
+    try {
+      showStatus('Creating order...');
+
+      // Step 1: Create the order through our backend.
+      const order = await apiRequest('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-product-key': productKey,
+          'Idempotency-Key': crypto.randomUUID()
+        },
+        body: JSON.stringify({
+          planCode,
+          externalUserId
+        })
+      });
+
+      showStatus('Order created. Opening Razorpay Checkout...');
+
+      // Step 2: Open Razorpay Checkout.
+      const checkout = new Razorpay({
+        key: order.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        name: 'Common Subscription Platform',
+        description: `${order.plan.name} Subscription`,
+        order_id: order.razorpayOrderId,
+
+        // Step 3: Send Razorpay's response to our backend.
+        handler: async function (paymentResponse) {
+          showStatus('Payment received. Verifying on the server...');
+
+          try {
+            const result = await apiRequest('/api/payments/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-product-key': productKey
+              },
+              body: JSON.stringify({
+                orderId: order.orderId,
+                razorpayOrderId:
+                  paymentResponse.razorpay_order_id,
+                razorpayPaymentId:
+                  paymentResponse.razorpay_payment_id,
+                razorpaySignature:
+                  paymentResponse.razorpay_signature
+              })
+            });
+
+            showStatus(
+              'PAYMENT VERIFIED\n\n' +
+              JSON.stringify(result, null, 2)
+            );
+          } catch (error) {
+            showStatus(
+              'Payment verification failed.\n\n' +
+              error.message +
+              '\n\nCheck the server terminal and order status.'
+            );
+          } finally {
+            button.disabled = false;
+          }
+        },
+
+        modal: {
+          ondismiss: function () {
+            showStatus(
+              'Checkout closed. The order may still be pending.'
+            );
+            button.disabled = false;
+          }
+        },
+
+        theme: {
+          color: '#185adb'
+        }
+      });
+
+      checkout.on('payment.failed', function (response) {
+        showStatus(
+          'Payment failed: ' +
+          (response.error?.description || 'Unknown error')
+        );
+        button.disabled = false;
+      });
+
+      checkout.open();
+    } catch (error) {
+      showStatus('Unable to start checkout: ' + error.message);
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
