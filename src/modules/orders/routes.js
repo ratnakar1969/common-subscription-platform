@@ -34,11 +34,40 @@ router.post('/', authenticateProduct, async (req, res) => {
 
     // Only select a plan belonging to the authenticated product.
     const planResult = await client.query(
-      `SELECT id, code, name, price_paise, duration_days
-       FROM plans
-       WHERE product_id = $1
-         AND code = $2
-         AND is_active = TRUE`,
+      `
+SELECT
+    p.id,
+    p.code,
+    p.name,
+    p.price_paise,
+    p.duration_days,
+    COALESCE(pp.amount_minor, p.price_paise) AS effective_price_paise,
+    CASE
+        WHEN pp.id IS NOT NULL THEN 'country'
+        ELSE 'default'
+    END AS pricing_source
+FROM plans p
+LEFT JOIN LATERAL (
+    SELECT
+        price.id,
+        price.amount_minor
+    FROM plan_prices price
+    WHERE price.plan_id = p.id
+      AND price.country_code = 'IN'
+      AND price.currency = 'INR'
+      AND price.is_active = TRUE
+      AND price.effective_from <= NOW()
+      AND (
+          price.effective_to IS NULL
+          OR price.effective_to > NOW()
+      )
+    ORDER BY price.effective_from DESC, price.id DESC
+    LIMIT 1
+) pp ON TRUE
+WHERE p.product_id = $1
+  AND p.code = $2
+  AND p.is_active = TRUE
+`,
       [req.product.id, planCode]
     );
 
@@ -50,7 +79,7 @@ router.post('/', authenticateProduct, async (req, res) => {
     }
 
     const plan = planResult.rows[0];
-    const amountPaise = Number(plan.price_paise);
+    const amountPaise = Number(plan.effective_price_paise);
 
     // Free plans should be activated without creating a Razorpay order.
     if (amountPaise === 0) {

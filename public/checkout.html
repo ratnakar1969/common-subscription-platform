@@ -2,247 +2,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Subscription Test Checkout</title>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subscription Platform - Test Checkout</title>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f4f6fa;
-      margin: 0;
-      padding: 30px 16px;
-      color: #172033;
+      max-width: 560px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.5;
     }
-
-    main {
-      max-width: 520px;
-      margin: auto;
-      padding: 24px;
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 12px;
-    }
-
-    label {
-      display: block;
-      margin-top: 16px;
-      margin-bottom: 6px;
-      font-weight: bold;
-    }
-
-    input, select, button {
-      box-sizing: border-box;
+    label { display: block; margin-top: 14px; font-weight: bold; }
+    input {
       width: 100%;
-      padding: 12px;
-      font-size: 15px;
-      border-radius: 7px;
+      box-sizing: border-box;
+      padding: 10px;
+      margin-top: 5px;
     }
-
-    input, select {
-      border: 1px solid #bbb;
-    }
-
     button {
       margin-top: 22px;
-      border: 0;
-      background: #185adb;
-      color: white;
+      padding: 12px 18px;
       cursor: pointer;
     }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: wait;
-    }
-
-    #status {
-      margin-top: 20px;
-      padding: 12px;
-      background: #eef2f8;
-      border-radius: 7px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-
-    .notice {
-      font-size: 13px;
-      color: #765600;
-      background: #fff6d9;
-      padding: 10px;
-      border-radius: 7px;
-    }
+    #result { margin-top: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
-
 <body>
-<main>
-  <h2>Subscription Test Checkout</h2>
+  <h2>Subscription Checkout</h2>
+  <p>Development testing only — Razorpay Test Mode.</p>
 
-  <p class="notice">
-    Local testing only. Do not publish this page with a real product
-    API key or deploy it as a production checkout.
-  </p>
+  <label for="productKey">Product API Key</label>
+  <input id="productKey" type="password" autocomplete="off"
+         placeholder="Enter the raw x-product-key value" required />
 
-  <form id="checkoutForm">
-    <label for="productKey">Product API Key</label>
-    <input
-      id="productKey"
-      type="password"
-      autocomplete="off"
-      required
-      placeholder="Paste PRODUCT_API_KEY"
-    >
+  <label for="internalOrderId">Internal Order ID</label>
+  <input id="internalOrderId"
+         value="ba2fb856-94d0-4c33-bfb0-6eff723d6528" required />
 
-    <label for="userId">Test User ID</label>
-    <input id="userId" value="user-123" maxlength="150" required>
+  <label for="razorpayOrderId">Razorpay Order ID</label>
+  <input id="razorpayOrderId" value="order_ToUpn6l4fRfLP0" required />
 
-    <label for="plan">Select Plan</label>
-    <select id="plan">
-      <option value="PRO">PRO — ₹599 for 90 days</option>
-      <option value="ELITE">ELITE — ₹999 for 180 days</option>
-    </select>
+  <label for="keyId">Razorpay Test Key ID</label>
+  <input id="keyId" value="rzp_test_Tllay0EYnoBn5e" required />
 
-    <button id="payButton" type="submit">
-      Create Order & Pay
-    </button>
-  </form>
+  <p><strong>Plan:</strong> PRO · ₹599 · 90 days</p>
 
-  <div id="status" role="status" aria-live="polite">
-    Ready to test.
-  </div>
-</main>
+  <button id="payButton" type="button">Pay ₹599 (Test Mode)</button>
+  <div id="result" role="status"></div>
 
-<script>
-  const form = document.getElementById('checkoutForm');
-  const button = document.getElementById('payButton');
-  const statusBox = document.getElementById('status');
+  <script>
+    const result = document.getElementById('result');
+    const payButton = document.getElementById('payButton');
 
-  function showStatus(message) {
-    statusBox.textContent = message;
-  }
+    payButton.addEventListener('click', async () => {
+      result.textContent = '';
 
-  async function apiRequest(url, options) {
-    const response = await fetch(url, options);
-    const data = await response.json().catch(() => ({}));
+      const productKey =
+        document.getElementById('productKey').value.trim();
+      const internalOrderId =
+        document.getElementById('internalOrderId').value.trim();
+      const razorpayOrderId =
+        document.getElementById('razorpayOrderId').value.trim();
+      const keyId = document.getElementById('keyId').value.trim();
 
-    if (!response.ok) {
-      throw new Error(
-        data.error || `Request failed with status ${response.status}`
-      );
-    }
+      if (!productKey || !internalOrderId || !razorpayOrderId || !keyId) {
+        result.textContent = 'Please fill in all fields.';
+        return;
+      }
 
-    return data;
-  }
+      if (!window.Razorpay) {
+        result.textContent =
+          'Razorpay Checkout did not load. Check the network and browser console.';
+        return;
+      }
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    button.disabled = true;
+      payButton.disabled = true;
+      result.textContent = 'Opening Razorpay Checkout...';
 
-    const productKey =
-      document.getElementById('productKey').value.trim();
+      try {
+        const options = {
+          key: keyId,
+          amount: 59900,
+          currency: 'INR',
+          name: 'Common Subscription Platform',
+          description: 'PRO subscription - 90 days',
+          order_id: razorpayOrderId,
+          handler: async function (response) {
+            result.textContent = 'Payment returned. Verifying with server...';
 
-    const externalUserId =
-      document.getElementById('userId').value.trim();
+            try {
+              const verification = await fetch(
+                '/api/payments/verify',
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-product-key': productKey
+                  },
+                  body: JSON.stringify({
+                    orderId: internalOrderId,
+                    razorpayOrderId: response.razorpay_order_id,
+                    razorpayPaymentId: response.razorpay_payment_id,
+                    razorpaySignature: response.razorpay_signature
+                  })
+                }
+              );
 
-    const planCode =
-      document.getElementById('plan').value;
+              const data = await verification.json();
 
-    try {
-      showStatus('Creating order...');
-
-      // Step 1: Create the order through our backend.
-      const order = await apiRequest('/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-product-key': productKey,
-          'Idempotency-Key': crypto.randomUUID()
-        },
-        body: JSON.stringify({
-          planCode,
-          externalUserId
-        })
-      });
-
-      showStatus('Order created. Opening Razorpay Checkout...');
-
-      // Step 2: Open Razorpay Checkout.
-      const checkout = new Razorpay({
-        key: order.keyId,
-        amount: order.amountPaise,
-        currency: order.currency,
-        name: 'Common Subscription Platform',
-        description: `${order.plan.name} Subscription`,
-        order_id: order.razorpayOrderId,
-
-        // Step 3: Send Razorpay's response to our backend.
-        handler: async function (paymentResponse) {
-          showStatus('Payment received. Verifying on the server...');
-
-          try {
-            const result = await apiRequest('/api/payments/verify', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-product-key': productKey
-              },
-              body: JSON.stringify({
-                orderId: order.orderId,
-                razorpayOrderId:
-                  paymentResponse.razorpay_order_id,
-                razorpayPaymentId:
-                  paymentResponse.razorpay_payment_id,
-                razorpaySignature:
-                  paymentResponse.razorpay_signature
-              })
-            });
-
-            showStatus(
-              'PAYMENT VERIFIED\n\n' +
-              JSON.stringify(result, null, 2)
-            );
-          } catch (error) {
-            showStatus(
-              'Payment verification failed.\n\n' +
-              error.message +
-              '\n\nCheck the server terminal and order status.'
-            );
-          } finally {
-            button.disabled = false;
+              result.textContent =
+                `Verification HTTP status: ${verification.status}\n` +
+                JSON.stringify(data, null, 2);
+            } catch (error) {
+              result.textContent =
+                'Could not reach the verification endpoint: ' +
+                error.message;
+            } finally {
+              payButton.disabled = false;
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              result.textContent =
+                'Checkout closed. Confirm payment status before retrying.';
+              payButton.disabled = false;
+            }
+          },
+          theme: {
+            color: '#2563eb'
           }
-        },
+        };
 
-        modal: {
-          ondismiss: function () {
-            showStatus(
-              'Checkout closed. The order may still be pending.'
-            );
-            button.disabled = false;
-          }
-        },
+        const checkout = new Razorpay(options);
 
-        theme: {
-          color: '#185adb'
-        }
-      });
+        checkout.on('payment.failed', function (response) {
+          result.textContent =
+            'Payment failed:\n' +
+            JSON.stringify(response.error, null, 2);
+          payButton.disabled = false;
+        });
 
-      checkout.on('payment.failed', function (response) {
-        showStatus(
-          'Payment failed: ' +
-          (response.error?.description || 'Unknown error')
-        );
-        button.disabled = false;
-      });
-
-      checkout.open();
-    } catch (error) {
-      showStatus('Unable to start checkout: ' + error.message);
-      button.disabled = false;
-    }
-  });
-</script>
+        checkout.open();
+      } catch (error) {
+        result.textContent = 'Checkout error: ' + error.message;
+        payButton.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
