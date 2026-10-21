@@ -4,11 +4,8 @@ import helmet from 'helmet';
 import plansRouter from './modules/plans/routes.js';
 import { rateLimit } from 'express-rate-limit';
 import ordersRouter from './modules/orders/routes.js';
-import paymentsRouter from './modules/payments/routes.js';
 import subscriptionRoutes from './modules/subscriptions/routes.js';
-import billingRoutes from './routes/billingRoutes.js';
-
-app.use('/api/billing', billingRoutes);
+import billingRoutes from './routes/billing.js';
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,7 +39,6 @@ app.get('/health', (req, res) => {
 });
 app.use('/api/plans', plansRouter);
 app.use('/api/orders', ordersRouter);
-app.use('/api/payments', paymentsRouter);
 app.use('/api/entitlements', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
 export default app;
