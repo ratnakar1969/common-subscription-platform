@@ -21,6 +21,39 @@ export async function getPlans() {
       `Subscription API returned HTTP ${response.status}`
     );
   }
+  
+
+  return response.json();
+}
+
+export async function createOrder({
+  planCode,
+  externalUserId,
+  idempotencyKey
+}) {
+  const response = await fetch(
+    `${SUBSCRIPTION_API_URL}/api/orders`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-product-key': PRODUCT_API_KEY,
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify({
+        planCode,
+        externalUserId
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+
+    throw new Error(
+      `Subscription API returned HTTP ${response.status}: ${errorBody}`
+    );
+  }
 
   return response.json();
 }
