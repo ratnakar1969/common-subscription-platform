@@ -6,6 +6,11 @@ import { rateLimit } from 'express-rate-limit';
 import ordersRouter from './modules/orders/routes.js';
 import subscriptionRoutes from './modules/subscriptions/routes.js';
 import billingRoutes from './routes/billing.js';
+import usageRoutes from './modules/usage/usageRoutes.js';
+import pinoHttp from "pino-http";
+import logger from "./config/logger.js";
+
+
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +20,18 @@ const __dirname = path.dirname(__filename);
 
 
 const app = express();
+// Create your Express app first.
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: true,
+    customLogLevel: (req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+  })
+);
 
 app.use(express.static(path.resolve(__dirname, '../public')));
 
@@ -41,4 +58,5 @@ app.use('/api/plans', plansRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/entitlements', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
+app.use("/api/usage", usageRoutes);
 export default app;

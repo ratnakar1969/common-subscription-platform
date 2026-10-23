@@ -5,6 +5,10 @@ import pool from './config/database.js';
 
 const PORT = Number(process.env.PORT || 3000);
 
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Subscription API listening on port ${PORT}`);
+});
+
 async function startServer() {
   try {
     // Verify that PostgreSQL is reachable before starting the API.
