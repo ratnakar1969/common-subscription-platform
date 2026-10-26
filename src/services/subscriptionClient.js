@@ -57,3 +57,40 @@ export async function createOrder({
 
   return response.json();
 }
+
+
+export async function verifyPayment({
+  orderId,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  idempotencyKey
+}) {
+  const response = await fetch(
+    `${SUBSCRIPTION_API_URL}/api/payments/verify`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-product-key': PRODUCT_API_KEY,
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify({
+        orderId,
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+
+    throw new Error(
+      `Subscription API returned HTTP ${response.status}: ${errorBody}`
+    );
+  }
+
+  return response.json();
+}
