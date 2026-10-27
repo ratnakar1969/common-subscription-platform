@@ -1,156 +1,257 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Subscription Platform - Test Checkout</title>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 560px;
-      margin: 40px auto;
-      padding: 20px;
-      line-height: 1.5;
-    }
-    label { display: block; margin-top: 14px; font-weight: bold; }
-    input {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 10px;
-      margin-top: 5px;
-    }
-    button {
-      margin-top: 22px;
-      padding: 12px 18px;
-      cursor: pointer;
-    }
-    #result { margin-top: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FlatsXChange — Subscription Checkout (Test)</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        body { margin: 0; background: #f4f6f8; color: #182230; }
+        main { max-width: 760px; margin: 36px auto; padding: 0 16px; }
+        .card { background: #fff; border: 1px solid #dce2e8; border-radius: 14px; padding: 24px; box-shadow: 0 6px 24px #172b4d0a; }
+        h1 { margin: 0 0 6px; font-size: 1.55rem; }
+        .muted { color: #596579; font-size: .94rem; }
+        label { display: block; font-weight: 600; margin: 16px 0 6px; }
+        input, select { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #c7d0db; border-radius: 8px; font: inherit; background: #fff; }
+        button { margin-top: 20px; width: 100%; border: 0; border-radius: 8px; padding: 12px 16px; font: inherit; font-weight: 700; cursor: pointer; background: #155eef; color: white; }
+        button:disabled { opacity: .55; cursor: wait; }
+        .status { margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: #eef4ff; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .status.error { background: #fff0f0; color: #a11b1b; }
+        .status.success { background: #eaf8ef; color: #17663a; }
+        pre { margin: 8px 0 0; padding: 14px; background: #111827; color: #e5e7eb; border-radius: 8px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .86rem; }
+        .small { font-size: .82rem; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 560px) { .row { grid-template-columns: 1fr; } .card { padding: 18px; } }
+    </style>
 </head>
 <body>
-  <h2>Subscription Checkout</h2>
-  <p>Development testing only — Razorpay Test Mode.</p>
+<main>
+    <section class="card">
+        <h1>FlatsXChange Subscription Checkout</h1>
+        <p class="muted">Development/test page. Creates the order through FlatsXChangeAPI, opens Razorpay Checkout, and submits the payment response to the Java backend for verification.</p>
 
-  <label for="productKey">Product API Key</label>
-  <input id="productKey" type="password" autocomplete="off"
-         placeholder="Enter the raw x-product-key value" required />
+        <form id="checkoutForm">
+            <label for="apiBase">FlatsXChangeAPI base URL</label>
+            <input id="apiBase" value="http://localhost:3000" required>
 
-  <label for="internalOrderId">Internal Order ID</label>
-  <input id="internalOrderId"
-         value="ba2fb856-94d0-4c33-bfb0-6eff723d6528" required />
+            <div class="row">
+                <div>
+                    <label for="externalUserId">FlatsXChange user ID</label>
+                    <input id="externalUserId" value="" required>
+                </div>
+                 <div>
+                    <label for="productKey">Enter Product Key</label>
+                    <input id="productKey" value="" required>
+                </div>
+                <div>
+                    <label for="planCode">Plan</label>
+                    <select id="planCode">
+                        <option value="PRO">PRO</option>
+                        <option value="ELITE">ELITE</option>
+                        <option value="FREE">FREE</option>
+                    </select>
+                </div>
+            </div>
 
-  <label for="razorpayOrderId">Razorpay Order ID</label>
-  <input id="razorpayOrderId" value="order_ToUpn6l4fRfLP0" required />
+            <button id="payButton" type="submit">Create order &amp; pay</button>
+        </form>
 
-  <label for="keyId">Razorpay Test Key ID</label>
-  <input id="keyId" value="rzp_test_Tllay0EYnoBn5e" required />
+        <div id="status" class="status" role="status">Ready. Use a Razorpay Test Mode account and test payment details.</div>
 
-  <p><strong>Plan:</strong> PRO · ₹599 · 90 days</p>
+        <h2>API response / debug details</h2>
+        <p class="muted small">This panel shows responses for development troubleshooting. Do not use this page as a production checkout.</p>
+        <pre id="response">{}</pre>
+    </section>
+</main>
 
-  <button id="payButton" type="button">Pay ₹599 (Test Mode)</button>
-  <div id="result" role="status"></div>
-  
+<script>
+    (() => {
+        const form = document.getElementById("checkoutForm");
+        const payButton = document.getElementById("payButton");
+        const statusBox = document.getElementById("status");
+        const responseBox = document.getElementById("response");
 
-  <script>
-    const result = document.getElementById('result');
-    const payButton = document.getElementById('payButton');
+        function setStatus(message, type = "") {
+            statusBox.textContent = message;
+            statusBox.className = "status" + (type ? " " + type : "");
+        }
 
-    payButton.addEventListener('click', async () => {
-      result.textContent = '';
+        function showResponse(value) {
+            responseBox.textContent = typeof value === "string"
+                ? value
+                : JSON.stringify(value, null, 2);
+        }
 
-      const productKey =
-        document.getElementById('productKey').value.trim();
-      const internalOrderId =
-        document.getElementById('internalOrderId').value.trim();
-      const razorpayOrderId =
-        document.getElementById('razorpayOrderId').value.trim();
-      const keyId = document.getElementById('keyId').value.trim();
+        async function readJson(response) {
+            const text = await response.text();
+            let data;
+            try { data = text ? JSON.parse(text) : {}; }
+            catch { data = { rawResponse: text }; }
+            if (!response.ok) {
+                const message = data.error || data.message || data.rawResponse || `HTTP ${response.status}`;
+                throw new Error(`${message} (HTTP ${response.status})`);
+            }
+            return data;
+        }
 
-      if (!productKey || !internalOrderId || !razorpayOrderId || !keyId) {
-        result.textContent = 'Please fill in all fields.';
-        return;
-      }
+        function firstDefined(object, keys) {
+            for (const key of keys) {
+                if (object && object[key] !== undefined && object[key] !== null && object[key] !== "") {
+                    return object[key];
+                }
+            }
+            return undefined;
+        }
 
-      if (!window.Razorpay) {
-        result.textContent =
-          'Razorpay Checkout did not load. Check the network and browser console.';
-        return;
-      }
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
 
-      payButton.disabled = true;
-      result.textContent = 'Opening Razorpay Checkout...';
+            if (!window.Razorpay) {
+                setStatus("Razorpay Checkout failed to load. Check your internet connection and reload.", "error");
+                return;
+            }
 
-      try {
-        const options = {
-          key: keyId,
-          amount: 59900,
-          currency: 'INR',
-          name: 'Common Subscription Platform',
-          description: 'PRO subscription - 90 days',
-          order_id: razorpayOrderId,
-          handler: async function (response) {
-            result.textContent = 'Payment returned. Verifying with server...';
+            const baseUrl = document.getElementById("apiBase").value.trim().replace(/\/+$/, "");
+            const externalUserId = document.getElementById("externalUserId").value.trim();
+            const planCode = document.getElementById("planCode").value;
+         const productKey = document.getElementById('productKey').value.trim();
+
+
+            if (!baseUrl || !externalUserId) {
+                setStatus("Enter the API base URL and FlatsXChange user ID.", "error");
+                return;
+            }
+
+            payButton.disabled = true;
+            showResponse({ step: "creating_order", planCode, externalUserId });
+            setStatus("Creating subscription order through FlatsXChangeAPI…");
 
             try {
-              const verification = await fetch(
-                '/api/payments/verify',
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-product-key': productKey
-                  },
-                  body: JSON.stringify({
-                    orderId: internalOrderId,
-                    razorpayOrderId: response.razorpay_order_id,
-                    razorpayPaymentId: response.razorpay_payment_id,
-                    razorpaySignature: response.razorpay_signature
-                  })
+                // Use a fresh key for each deliberate checkout attempt.
+                // For retries of the same logical request, reuse the original idempotency key.
+                const idempotencyKey = (window.crypto && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : `flats-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+                const orderResponse = await fetch(`${baseUrl}/api/orders`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Idempotency-Key": idempotencyKey,
+                        "x-product-key" : productKey
+                    },
+                    body: JSON.stringify({ planCode, externalUserId })
+                });
+
+                const orderData = await readJson(orderResponse);
+                showResponse({ step: "order_created", order: orderData });
+
+                // Accommodate common response field names; adjust to the exact API response if needed.
+                const internalOrderId = firstDefined(orderData, ["orderId", "internalOrderId", "id"]);
+                const razorpayOrderId = firstDefined(orderData, [
+                    "razorpayOrderId", "razorpay_order_id", "providerOrderId"
+                ]) || (typeof orderData.id === "string" && orderData.id.startsWith("order_") ? orderData.id : undefined);
+                const amount = firstDefined(orderData, ["amountPaise", "amount"]);
+                const currency = firstDefined(orderData, ["currency"]) || "INR";
+                const key = firstDefined(orderData, ["keyId", "key_id", "razorpayKeyId"]);
+
+                if (!internalOrderId || !razorpayOrderId || !amount || !key) {
+                    throw new Error(
+                        "Order was created, but the response is missing a required field (internal order ID, Razorpay order ID, amount, or key ID). See the response panel and align the field names in checkout.html with the Java API response."
+                    );
                 }
-              );
 
-              const data = await verification.json();
+                setStatus("Order created. Opening Razorpay Checkout…");
 
-              result.textContent =
-                `Verification HTTP status: ${verification.status}\n` +
-                JSON.stringify(data, null, 2);
+                const checkout = new Razorpay({
+                    key,
+                    amount: Number(amount),
+                    currency,
+                    name: "FlatsXChange",
+                    description: `${planCode} subscription`,
+                    order_id: razorpayOrderId,
+                    notes: { externalUserId, planCode },
+                    handler: async function (paymentResponse) {
+                        setStatus("Payment completed in Checkout. Verifying signature and activating subscription…");
+                        showResponse({
+                            step: "checkout_success_verification_pending",
+                            order: orderData,
+                            razorpay: paymentResponse
+                        });
+
+                        try {
+                            const verifyResponse = await fetch(`${baseUrl}/api/payments/verify`, {
+                                  method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Idempotency-Key": idempotencyKey,
+                        "x-product-key" : productKey
+                    },
+                                body: JSON.stringify({
+                                    orderId: internalOrderId,
+                                    razorpayOrderId: paymentResponse.razorpay_order_id,
+                                    razorpayPaymentId: paymentResponse.razorpay_payment_id,
+                                    razorpaySignature: paymentResponse.razorpay_signature
+                                })
+                            });
+
+                            const verifyData = await readJson(verifyResponse);
+                            showResponse({
+                                step: "payment_verification_response",
+                                order: orderData,
+                                razorpay: paymentResponse,
+                                verification: verifyData
+                            });
+
+                            const activated = verifyData.subscriptionActivated === true
+                                || verifyData.subscriptionStatus === "active"
+                                || verifyData.status === "active";
+
+                            setStatus(
+                                activated
+                                    ? "Payment verified and subscription activated."
+                                    : "Verification endpoint returned successfully. Check the response below to confirm payment and subscription status.",
+                                activated ? "success" : ""
+                            );
+                        } catch (error) {
+                            setStatus(
+                                "Checkout returned a payment response, but server-side verification failed. Do not treat this as a paid subscription. " + error.message,
+                                "error"
+                            );
+                            showResponse({
+                                step: "verification_error",
+                                order: orderData,
+                                razorpay: paymentResponse,
+                                error: error.message
+                            });
+                        } finally {
+                            payButton.disabled = false;
+                        }
+                    },
+                    modal: {
+                        ondismiss: function () {
+                            setStatus("Razorpay Checkout was closed. No successful payment has been confirmed by this page.");
+                            payButton.disabled = false;
+                        }
+                    },
+                    theme: { color: "#155eef" }
+                });
+
+                checkout.on("payment.failed", function (failure) {
+                    setStatus("Razorpay reported a payment failure. See details below.", "error");
+                    showResponse({ step: "payment_failed", error: failure.error || failure });
+                    payButton.disabled = false;
+                });
+
+                checkout.open();
             } catch (error) {
-              result.textContent =
-                'Could not reach the verification endpoint: ' +
-                error.message;
-            } finally {
-              payButton.disabled = false;
+                setStatus(error.message || "Unable to start checkout.", "error");
+                showResponse({ step: "checkout_error", error: error.message || String(error) });
+                payButton.disabled = false;
             }
-          },
-          modal: {
-            ondismiss: function () {
-              result.textContent =
-                'Checkout closed. Confirm payment status before retrying.';
-              payButton.disabled = false;
-            }
-          },
-          theme: {
-            color: '#2563eb'
-          }
-        };
-
-        const checkout = new Razorpay(options);
-
-        checkout.on('payment.failed', function (response) {
-          result.textContent =
-            'Payment failed:\n' +
-            JSON.stringify(response.error, null, 2);
-          payButton.disabled = false;
         });
-
-        checkout.open();
-      } catch (error) {
-        result.textContent = 'Checkout error: ' + error.message;
-        payButton.disabled = false;
-      }
-    });
-  </script>
+    })();
+</script>
 </body>
 </html>
