@@ -7,6 +7,7 @@ import ordersRouter from './modules/orders/routes.js';
 import subscriptionRoutes from './modules/subscriptions/routes.js';
 import billingRoutes from './routes/billing.js';
 import usageRoutes from './modules/usage/usageRoutes.js';
+import paymentRoutes from "./modules/payments/routes.js";
 import pinoHttp from "pino-http";
 import logger from "./config/logger.js";
 
@@ -59,4 +60,5 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/entitlements', subscriptionRoutes);
 app.use('/api/billing', billingRoutes);
 app.use("/api/usage", usageRoutes);
+app.use("/api/payments", paymentRoutes);
 export default app;
