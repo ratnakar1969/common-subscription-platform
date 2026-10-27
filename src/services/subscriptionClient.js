@@ -66,6 +66,7 @@ export async function verifyPayment({
   razorpaySignature,
   idempotencyKey
 }) {
+  console.log("Verifying Payments");
   const response = await fetch(
     `${SUBSCRIPTION_API_URL}/api/payments/verify`,
     {
