@@ -81,6 +81,51 @@ WHERE p.product_id = $1
     const plan = planResult.rows[0];
     const amountPaise = Number(plan.effective_price_paise);
 
+    
+    // Prevent a user from creating a new paid order when they
+    // already have an active subscription for this product.
+    const activeSubscriptionResult = await client.query(
+      `
+      SELECT
+          s.id,
+          s.status,
+          s.starts_at,
+          s.expires_at,
+          p.code AS plan_code,
+          p.name AS plan_name
+      FROM subscriptions s
+      JOIN plans p ON p.id = s.plan_id
+      WHERE s.product_id = $1
+        AND s.external_user_id = $2
+        AND s.status = 'active'
+        AND s.starts_at <= NOW()
+        AND s.expires_at > NOW()
+      ORDER BY s.expires_at DESC
+      LIMIT 1
+      `,
+      [req.product.id, externalUserId]
+    );
+
+    if (activeSubscriptionResult.rowCount > 0) {
+      const subscription = activeSubscriptionResult.rows[0];
+
+      await client.query('ROLLBACK');
+
+      return res.status(409).json({
+        error: 'ACTIVE_SUBSCRIPTION_EXISTS',
+        message: 'You already have an active subscription.',
+        subscription: {
+          id: subscription.id,
+          status: subscription.status,
+          planCode: subscription.plan_code,
+          planName: subscription.plan_name,
+          startsAt: subscription.starts_at,
+          expiresAt: subscription.expires_at,
+        },
+      });
+    }
+
+
     // Free plans should be activated without creating a Razorpay order.
     if (amountPaise === 0) {
       await client.query('ROLLBACK');

@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,30 +7,64 @@
     <title>FlatsXChange — Subscription Checkout (Test)</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
-        :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        :root {
+            color-scheme: light;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+        }
+
         body { margin: 0; background: #f4f6f8; color: #182230; }
         main { max-width: 760px; margin: 36px auto; padding: 0 16px; }
-        .card { background: #fff; border: 1px solid #dce2e8; border-radius: 14px; padding: 24px; box-shadow: 0 6px 24px #172b4d0a; }
+        .card {
+            background: #fff; border: 1px solid #dce2e8;
+            border-radius: 14px; padding: 24px;
+            box-shadow: 0 6px 24px #172b4d0a;
+        }
         h1 { margin: 0 0 6px; font-size: 1.55rem; }
         .muted { color: #596579; font-size: .94rem; }
         label { display: block; font-weight: 600; margin: 16px 0 6px; }
-        input, select { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #c7d0db; border-radius: 8px; font: inherit; background: #fff; }
-        button { margin-top: 20px; width: 100%; border: 0; border-radius: 8px; padding: 12px 16px; font: inherit; font-weight: 700; cursor: pointer; background: #155eef; color: white; }
+        input, select {
+            box-sizing: border-box; width: 100%; padding: 11px 12px;
+            border: 1px solid #c7d0db; border-radius: 8px;
+            font: inherit; background: #fff;
+        }
+        button {
+            margin-top: 20px; width: 100%; border: 0;
+            border-radius: 8px; padding: 12px 16px;
+            font: inherit; font-weight: 700; cursor: pointer;
+            background: #155eef; color: white;
+        }
         button:disabled { opacity: .55; cursor: wait; }
-        .status { margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: #eef4ff; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .status {
+            margin-top: 18px; padding: 12px 14px; border-radius: 8px;
+            background: #eef4ff; white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
         .status.error { background: #fff0f0; color: #a11b1b; }
         .status.success { background: #eaf8ef; color: #17663a; }
-        pre { margin: 8px 0 0; padding: 14px; background: #111827; color: #e5e7eb; border-radius: 8px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .86rem; }
+        pre {
+            margin: 8px 0 0; padding: 14px; background: #111827;
+            color: #e5e7eb; border-radius: 8px; overflow: auto;
+            white-space: pre-wrap; overflow-wrap: anywhere;
+            font-size: .86rem;
+        }
         .small { font-size: .82rem; }
         .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        @media (max-width: 560px) { .row { grid-template-columns: 1fr; } .card { padding: 18px; } }
+        @media (max-width: 560px) {
+            .row { grid-template-columns: 1fr; }
+            .card { padding: 18px; }
+        }
     </style>
 </head>
 <body>
 <main>
     <section class="card">
         <h1>FlatsXChange Subscription Checkout</h1>
-        <p class="muted">Development/test page. Creates the order through FlatsXChangeAPI, opens Razorpay Checkout, and submits the payment response to the Java backend for verification.</p>
+        <p class="muted">
+            Development/test page. Creates an order through FlatsXChangeAPI,
+            opens Razorpay Checkout, and submits the payment response to the
+            Java backend for verification.
+        </p>
 
         <form id="checkoutForm">
             <label for="apiBase">FlatsXChangeAPI base URL</label>
@@ -38,11 +73,12 @@
             <div class="row">
                 <div>
                     <label for="externalUserId">FlatsXChange user ID</label>
-                    <input id="externalUserId" value="" required>
+                    <input id="externalUserId" required>
                 </div>
-                 <div>
-                    <label for="productKey">Enter Product Key</label>
-                    <input id="productKey" value="" required>
+                <div>
+                    <label for="productKey">Product Key</label>
+                    <input id="productKey" type="password" required
+                           autocomplete="off">
                 </div>
                 <div>
                     <label for="planCode">Plan</label>
@@ -54,204 +90,349 @@
                 </div>
             </div>
 
-            <button id="payButton" type="submit">Create order &amp; pay</button>
+            <button id="payButton" type="submit">
+                Create order &amp; pay
+            </button>
         </form>
 
-        <div id="status" class="status" role="status">Ready. Use a Razorpay Test Mode account and test payment details.</div>
+        <div id="status" class="status" role="status" aria-live="polite">
+            Ready. Use a Razorpay Test Mode account and test payment details.
+        </div>
 
         <h2>API response / debug details</h2>
-        <p class="muted small">This panel shows responses for development troubleshooting. Do not use this page as a production checkout.</p>
+        <p class="muted small">
+            Development troubleshooting only. Do not use this page as a
+            production checkout.
+        </p>
         <pre id="response">{}</pre>
     </section>
 </main>
 
 <script>
-    (() => {
-        const form = document.getElementById("checkoutForm");
-        const payButton = document.getElementById("payButton");
-        const statusBox = document.getElementById("status");
-        const responseBox = document.getElementById("response");
+(() => {
+    const form = document.getElementById("checkoutForm");
+    const payButton = document.getElementById("payButton");
+    const statusBox = document.getElementById("status");
+    const responseBox = document.getElementById("response");
 
-        function setStatus(message, type = "") {
-            statusBox.textContent = message;
-            statusBox.className = "status" + (type ? " " + type : "");
+    function setStatus(message, type = "") {
+        statusBox.textContent = message;
+        statusBox.className = "status" + (type ? " " + type : "");
+    }
+
+    function showResponse(value) {
+        responseBox.textContent = typeof value === "string"
+            ? value
+            : JSON.stringify(value, null, 2);
+    }
+
+    async function readJson(response) {
+        const text = await response.text();
+        let data;
+
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch {
+            data = { rawResponse: text };
         }
 
-        function showResponse(value) {
-            responseBox.textContent = typeof value === "string"
-                ? value
-                : JSON.stringify(value, null, 2);
+        if (!response.ok) {
+            const message = data.error || data.message ||
+                data.rawResponse || `HTTP ${response.status}`;
+            throw new Error(`${message} (HTTP ${response.status})`);
         }
 
-        async function readJson(response) {
-            const text = await response.text();
-            let data;
-            try { data = text ? JSON.parse(text) : {}; }
-            catch { data = { rawResponse: text }; }
-            if (!response.ok) {
-                const message = data.error || data.message || data.rawResponse || `HTTP ${response.status}`;
-                throw new Error(`${message} (HTTP ${response.status})`);
+        return data;
+    }
+
+    function firstDefined(object, keys) {
+        for (const key of keys) {
+            if (object && object[key] !== undefined &&
+                object[key] !== null && object[key] !== "") {
+                return object[key];
             }
-            return data;
+        }
+        return undefined;
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!window.Razorpay) {
+            setStatus(
+                "Razorpay Checkout failed to load. Check your internet connection.",
+                "error"
+            );
+            return;
         }
 
-        function firstDefined(object, keys) {
-            for (const key of keys) {
-                if (object && object[key] !== undefined && object[key] !== null && object[key] !== "") {
-                    return object[key];
-                }
-            }
-            return undefined;
+        const baseUrl = document.getElementById("apiBase")
+            .value.trim().replace(/\/+$/, "");
+        const externalUserId = document.getElementById("externalUserId")
+            .value.trim();
+        const productKey = document.getElementById("productKey")
+            .value.trim();
+        const planCode = document.getElementById("planCode").value;
+
+        if (!baseUrl || !externalUserId || !productKey) {
+            setStatus(
+                "Enter the API URL, user ID and product key.",
+                "error"
+            );
+            return;
         }
 
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
+        payButton.disabled = true;
 
-            if (!window.Razorpay) {
-                setStatus("Razorpay Checkout failed to load. Check your internet connection and reload.", "error");
-                return;
+        let checkoutOpened = false;
+
+        try {
+            // A new deliberate attempt gets a new idempotency key.
+            const idempotencyKey = window.crypto?.randomUUID
+                ? crypto.randomUUID()
+                : `flats-${Date.now()}-${Math.random()
+                    .toString(16).slice(2)}`;
+
+            setStatus("Creating subscription order...");
+            showResponse({
+                step: "creating_order",
+                planCode,
+                externalUserId
+            });
+
+            const orderResponse = await fetch(`${baseUrl}/api/orders`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": idempotencyKey,
+                    "x-product-key": productKey
+                },
+                body: JSON.stringify({ planCode, externalUserId })
+            });
+
+            const orderData = await readJson(orderResponse);
+
+            showResponse({
+                step: "order_created",
+                order: orderData
+            });
+
+            const internalOrderId = firstDefined(orderData, [
+                "orderId", "internalOrderId", "id"
+            ]);
+
+            const razorpayOrderId = firstDefined(orderData, [
+                "razorpayOrderId",
+                "razorpay_order_id",
+                "providerOrderId"
+            ]) || (
+                typeof orderData.id === "string" &&
+                orderData.id.startsWith("order_")
+                    ? orderData.id : undefined
+            );
+
+            const amount = firstDefined(orderData, [
+                "amountPaise", "amount"
+            ]);
+            const currency = firstDefined(orderData, ["currency"]) || "INR";
+            const key = firstDefined(orderData, [
+                "keyId", "key_id", "razorpayKeyId"
+            ]);
+
+            if (!internalOrderId || !razorpayOrderId ||
+                amount === undefined || !key) {
+                throw new Error(
+                    "Order response is missing a required field. " +
+                    "Check the API response panel."
+                );
             }
 
-            const baseUrl = document.getElementById("apiBase").value.trim().replace(/\/+$/, "");
-            const externalUserId = document.getElementById("externalUserId").value.trim();
-            const planCode = document.getElementById("planCode").value;
-         const productKey = document.getElementById('productKey').value.trim();
-
-
-            if (!baseUrl || !externalUserId) {
-                setStatus("Enter the API base URL and FlatsXChange user ID.", "error");
-                return;
+            if (Number(amount) <= 0) {
+                throw new Error(
+                    "This plan does not require a Razorpay payment. " +
+                    "Handle FREE-plan activation through the appropriate " +
+                    "server-side subscription flow."
+                );
             }
 
-            payButton.disabled = true;
-            showResponse({ step: "creating_order", planCode, externalUserId });
-            setStatus("Creating subscription order through FlatsXChangeAPI…");
+            setStatus("Order created. Opening Razorpay Checkout...");
 
-            try {
-                // Use a fresh key for each deliberate checkout attempt.
-                // For retries of the same logical request, reuse the original idempotency key.
-                const idempotencyKey = (window.crypto && crypto.randomUUID)
-                    ? crypto.randomUUID()
-                    : `flats-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            let paymentFailed = false;
+            let verificationInProgress = false;
 
-                const orderResponse = await fetch(`${baseUrl}/api/orders`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Idempotency-Key": idempotencyKey,
-                        "x-product-key" : productKey
-                    },
-                    body: JSON.stringify({ planCode, externalUserId })
-                });
+            const checkout = new Razorpay({
+                key,
+                amount: Number(amount),
+                currency,
+                name: "FlatsXChange",
+                description: `${planCode} subscription`,
+                order_id: razorpayOrderId,
+                notes: { externalUserId, planCode },
 
-                const orderData = await readJson(orderResponse);
-                showResponse({ step: "order_created", order: orderData });
+                // Let the user retry from our page after a failure.
+                retry: { enabled: false },
 
-                // Accommodate common response field names; adjust to the exact API response if needed.
-                const internalOrderId = firstDefined(orderData, ["orderId", "internalOrderId", "id"]);
-                const razorpayOrderId = firstDefined(orderData, [
-                    "razorpayOrderId", "razorpay_order_id", "providerOrderId"
-                ]) || (typeof orderData.id === "string" && orderData.id.startsWith("order_") ? orderData.id : undefined);
-                const amount = firstDefined(orderData, ["amountPaise", "amount"]);
-                const currency = firstDefined(orderData, ["currency"]) || "INR";
-                const key = firstDefined(orderData, ["keyId", "key_id", "razorpayKeyId"]);
+                handler: async function (paymentResponse) {
+                    if (verificationInProgress) return;
+                    verificationInProgress = true;
 
-                if (!internalOrderId || !razorpayOrderId || !amount || !key) {
-                    throw new Error(
-                        "Order was created, but the response is missing a required field (internal order ID, Razorpay order ID, amount, or key ID). See the response panel and align the field names in checkout.html with the Java API response."
+                    setStatus(
+                        "Payment response received. Verifying payment " +
+                        "with FlatsXChangeAPI..."
                     );
-                }
 
-                setStatus("Order created. Opening Razorpay Checkout…");
+                    showResponse({
+                        step: "verification_pending",
+                        order: orderData,
+                        razorpay: paymentResponse
+                    });
 
-                const checkout = new Razorpay({
-                    key,
-                    amount: Number(amount),
-                    currency,
-                    name: "FlatsXChange",
-                    description: `${planCode} subscription`,
-                    order_id: razorpayOrderId,
-                    notes: { externalUserId, planCode },
-                    handler: async function (paymentResponse) {
-                        setStatus("Payment completed in Checkout. Verifying signature and activating subscription…");
-                        showResponse({
-                            step: "checkout_success_verification_pending",
-                            order: orderData,
-                            razorpay: paymentResponse
-                        });
-
-                        try {
-                            const verifyResponse = await fetch(`${baseUrl}/api/payments/verify`, {
-                                  method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Idempotency-Key": idempotencyKey,
-                        "x-product-key" : productKey
-                    },
+                    try {
+                        const verifyResponse = await fetch(
+                            `${baseUrl}/api/payments/verify`,
+                            {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Idempotency-Key": idempotencyKey,
+                                    "x-product-key": productKey
+                                },
                                 body: JSON.stringify({
                                     orderId: internalOrderId,
-                                    razorpayOrderId: paymentResponse.razorpay_order_id,
-                                    razorpayPaymentId: paymentResponse.razorpay_payment_id,
-                                    razorpaySignature: paymentResponse.razorpay_signature
+                                    razorpayOrderId:
+                                        paymentResponse.razorpay_order_id,
+                                    razorpayPaymentId:
+                                        paymentResponse.razorpay_payment_id,
+                                    razorpaySignature:
+                                        paymentResponse.razorpay_signature
                                 })
-                            });
+                            }
+                        );
 
-                            const verifyData = await readJson(verifyResponse);
-                            showResponse({
-                                step: "payment_verification_response",
-                                order: orderData,
-                                razorpay: paymentResponse,
-                                verification: verifyData
-                            });
+                        const verifyData = await readJson(verifyResponse);
+                        console.log("Verify Data "+verifyData);
 
-                            const activated = verifyData.subscriptionActivated === true
-                                || verifyData.subscriptionStatus === "active"
-                                || verifyData.status === "active";
+                        showResponse({
+                            step: "payment_verification_response",
+                            order: orderData,
+                            verification: verifyData
+                        });
 
+                       const activated =
+    verifyData.subscriptionActivated === true ||
+    verifyData.subscriptionStatus === "active" ||
+    verifyData.status === "active" ||
+    verifyData.subscription?.status === "active";
+    
+                        if (activated) {
                             setStatus(
-                                activated
-                                    ? "Payment verified and subscription activated."
-                                    : "Verification endpoint returned successfully. Check the response below to confirm payment and subscription status.",
-                                activated ? "success" : ""
+                                "Payment verified and subscription activated.",
+                                "success"
                             );
-                        } catch (error) {
+                        } else {
                             setStatus(
-                                "Checkout returned a payment response, but server-side verification failed. Do not treat this as a paid subscription. " + error.message,
+                                "Verification returned a response, but " +
+                                "subscription activation is not confirmed. " +
+                                "Check the API response before retrying.",
                                 "error"
                             );
-                            showResponse({
-                                step: "verification_error",
-                                order: orderData,
-                                razorpay: paymentResponse,
-                                error: error.message
-                            });
-                        } finally {
-                            payButton.disabled = false;
                         }
-                    },
-                    modal: {
-                        ondismiss: function () {
-                            setStatus("Razorpay Checkout was closed. No successful payment has been confirmed by this page.");
-                            payButton.disabled = false;
+                    } catch (error) {
+                        setStatus(
+                            "Payment was submitted, but server verification " +
+                            "could not be confirmed. Do not assume the " +
+                            "subscription is active. Check the order status " +
+                            "before attempting another payment. " +
+                            error.message,
+                            "error"
+                        );
+
+                        showResponse({
+                            step: "verification_error",
+                            order: orderData,
+                            razorpay: paymentResponse,
+                            error: error.message
+                        });
+                    } finally {
+                        verificationInProgress = false;
+                        payButton.disabled = false;
+                    }
+                },
+
+                modal: {
+                    confirm_close: true,
+
+                    ondismiss: function () {
+                        checkoutOpened = false;
+                        payButton.disabled = false;
+
+                        if (paymentFailed) {
+                            setStatus(
+                                "Payment failed. No subscription has been " +
+                                "activated by this checkout. You can try " +
+                                "again using the payment button.",
+                                "error"
+                            );
+                        } else if (!verificationInProgress) {
+                            setStatus(
+                                "Checkout closed. Payment status has not " +
+                                "been confirmed by this page. You can " +
+                                "return to checkout when ready."
+                            );
                         }
-                    },
-                    theme: { color: "#155eef" }
+                    }
+                },
+
+                theme: { color: "#155eef" }
+            });
+
+            checkout.on("payment.failed", function (failure) {
+                paymentFailed = true;
+
+                const error = failure.error || {};
+                const reason = error.description ||
+                    error.reason ||
+                    "The payment could not be completed.";
+
+                setStatus(
+                    `Payment failed: ${reason}\n` +
+                    "Close Checkout to return to FlatsXChange, then " +
+                    "try again when ready.",
+                    "error"
+                );
+
+                showResponse({
+                    step: "payment_failed",
+                    error: {
+                        code: error.code,
+                        description: error.description,
+                        reason: error.reason,
+                        source: error.source,
+                        order_id: error.metadata?.order_id,
+                        payment_id: error.metadata?.payment_id
+                    }
                 });
 
-                checkout.on("payment.failed", function (failure) {
-                    setStatus("Razorpay reported a payment failure. See details below.", "error");
-                    showResponse({ step: "payment_failed", error: failure.error || failure });
-                    payButton.disabled = false;
-                });
+                // Do not assume a failed attempt means the order itself
+                // is failed, or that no later payment can succeed.
+            });
 
-                checkout.open();
-            } catch (error) {
-                setStatus(error.message || "Unable to start checkout.", "error");
-                showResponse({ step: "checkout_error", error: error.message || String(error) });
-                payButton.disabled = false;
-            }
-        });
-    })();
+            checkout.open();
+            checkoutOpened = true;
+
+        } catch (error) {
+            setStatus(
+                error.message || "Unable to start checkout.",
+                "error"
+            );
+            showResponse({
+                step: "checkout_error",
+                error: error.message || String(error)
+            });
+            payButton.disabled = false;
+        }
+    });
+})();
 </script>
 </body>
 </html>
