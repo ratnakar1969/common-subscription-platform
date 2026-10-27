@@ -5,6 +5,7 @@ import pool from "../../config/database.js";
 import razorpay from "../../config/razorPay.js";
 import authenticateProduct from "../../middleware/authProduct.js";
 
+
 const router = Router();
 
 router.post("/verify", authenticateProduct, async (req, res) => {
