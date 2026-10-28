@@ -1,6 +1,5 @@
 
 import express from 'express';
-import helmet from 'helmet';
 import plansRouter from './modules/plans/routes.js';
 import { rateLimit } from 'express-rate-limit';
 import ordersRouter from './modules/orders/routes.js';
@@ -10,6 +9,8 @@ import usageRoutes from './modules/usage/usageRoutes.js';
 import paymentRoutes from "./modules/payments/routes.js";
 import pinoHttp from "pino-http";
 import logger from "./config/logger.js";
+import helmet from 'helmet';
+import cors from 'cors';
 
 
 
@@ -22,6 +23,21 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 // Create your Express app first.
+// Allow your local frontend
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-product-key',
+    'Idempotency-Key'
+  ]
+}));
+
+app.use(helmet());
+app.use(express.json({ limit: '1mb' }));
+
 app.use(
   pinoHttp({
     logger,
