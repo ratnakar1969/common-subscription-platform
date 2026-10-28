@@ -32,6 +32,7 @@ router.get('/', authenticateProduct, async (req, res) => {
 
     const result = await pool.query(
       `SELECT
+          p.id,
           p.code,
           p.name,
           p.price_paise AS default_price_paise,
@@ -47,7 +48,28 @@ router.get('/', authenticateProduct, async (req, res) => {
             WHEN pp.id IS NOT NULL THEN pp.currency
             WHEN $3 = 'INR' OR $3 IS NULL THEN 'INR'
             ELSE NULL
-          END AS effective_currency
+          END AS effective_currency,
+          COALESCE(
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'code', f.code,
+                  'name', f.name,
+                  'description', f.description,
+                  'enabled', pf.enabled
+                )
+                ORDER BY f.name
+              )
+              FROM plan_features pf
+              JOIN product_features f
+                ON f.id = pf.feature_id
+               AND f.product_id = pf.product_id
+               AND f.is_active = TRUE
+              WHERE pf.plan_id = p.id
+                AND pf.product_id = p.product_id
+            ),
+            '[]'::json
+          ) AS features
        FROM plans p
        LEFT JOIN LATERAL (
           SELECT
@@ -83,15 +105,19 @@ router.get('/', authenticateProduct, async (req, res) => {
         name: plan.name,
         priceMinor: amountMinor,
         currency: effectiveCurrency,
-        // Kept for backward compatibility with existing clients.
+
+        // Backward compatibility with existing clients.
         pricePaise:
           effectiveCurrency === 'INR' ? amountMinor : null,
         priceRupees:
           effectiveCurrency === 'INR' ? amountMinor / 100 : null,
+
         durationDays: plan.duration_days,
         pricingSource: plan.country_price_minor != null
           ? 'country'
           : 'default',
+
+        features: plan.features,
       };
     });
 
@@ -101,7 +127,7 @@ router.get('/', authenticateProduct, async (req, res) => {
         name: req.product.name,
       },
       pricing: {
-        country: country,
+        country,
         currency: currency ?? 'INR',
       },
       plans,
