@@ -2,219 +2,7 @@
 import pool from "../../config/database.js";
 import logger from "../../config/logger.js";
 
-
-// Records one successfully created HiringXChange job.
-// jobId must be stable across retries.
-async function recordJobPosted({ userId, jobId, occurredAt }) {
-  if (!userId || !jobId) {
-    throw new Error("userId and jobId are required");
-  }
-  logger.info(
-  {
-    operation: "record-job-posted",
-    userId,
-    jobId,
-  },
-  "Processing job-posted usage"
-);
-
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    const eventTime = occurredAt || new Date().toISOString();
-
-    // Serialize requests with the same product + metric + job ID.
-    // This also protects against concurrent retries when an
-    // existing unique constraint has not yet been verified.
-    const lockKey = `HIRINGXCHANGE:jobs_posted:${jobId}`;
-
-    await client.query(
-      `SELECT pg_advisory_xact_lock(hashtext($1))`,
-      [lockKey]
-    );
-
-    // Do not count an already-recorded job twice.
-    const existing = await client.query(
-      `SELECT e.id, e.period_start
-         FROM usage_events e
-         JOIN products p ON p.id = e.product_id
-         JOIN usage_metrics m ON m.id = e.metric_id
-        WHERE p.code = 'HIRINGXCHANGE'
-          AND m.metric_code = 'jobs_posted'
-          AND e.idempotency_key = $1
-        LIMIT 1`,
-      [String(jobId)]
-    );
-
-    if (existing.rowCount > 0) {
-      logger.info(
-  {
-    operation: "record-job-posted",
-    userId,
-    jobId,
-    duplicate: true,
-  },
-  "Duplicate usage event detected; skipping increment"
-);
-      await client.query("COMMIT");
-      logger.info(
-  {
-    operation: "record-job-posted",
-    userId,
-    jobId,
-    eventId: insertedEvent.id,
-    duplicate: false,
-  },
-  "Job-posted usage recorded successfully"
-);
-
-      return {
-        recorded: false,
-        duplicate: true,
-        eventId: existing.rows[0].id,
-        periodStart: existing.rows[0].period_start
-      };
-    }
-
-    
-const result = await client.query(
-  `INSERT INTO usage_events (
-     product_id,
-     metric_id,
-     subscription_id,
-     external_subject_id,
-     external_user_id,
-     idempotency_key,
-     quantity,
-     occurred_at,
-     period_start,
-     period_end,
-     metadata
-   )
-   SELECT
-     p.id,
-     m.id,
-     s.id,
-     $1::text,  -- external_subject_id
-     $1::text,
-     $2::text,
-     1,
-     $3::timestamptz,
-     date_trunc(
-       'month',
-       $3::timestamptz AT TIME ZONE 'UTC'
-     ) AT TIME ZONE 'UTC',  -- period_start
-     (
-       date_trunc(
-         'month',
-         $3::timestamptz AT TIME ZONE 'UTC'
-       ) + INTERVAL '1 month'
-     ) AT TIME ZONE 'UTC',  -- period_end
-     jsonb_build_object('jobId', $2::text)
-   FROM products p
-   JOIN usage_metrics m
-     ON m.product_id = p.id
-    AND m.metric_code = 'jobs_posted'
-    AND m.is_active = TRUE
-   JOIN LATERAL (
-     SELECT sub.id
-     FROM subscriptions sub
-     WHERE sub.product_id = p.id
-       AND sub.external_user_id = $1::text
-       AND sub.status = 'active'
-       AND sub.starts_at <= $3::timestamptz
-       AND sub.expires_at > $3::timestamptz
-     ORDER BY sub.starts_at DESC
-     LIMIT 1
-   ) s ON TRUE
-   WHERE UPPER(p.code) = 'HIRINGXCHANGE'
-   RETURNING id, subscription_id, metric_id, quantity, occurred_at, period_start,period_end`,
-  [String(userId), String(jobId), eventTime]
-);
-
-const insertedEvent = result.rows[0];
-
-if (!insertedEvent) {
-  throw new Error(
-    "Usage event was not inserted; cannot update usage_count"
-  );
-}
-
-await client.query(
-  `INSERT INTO usage_counters (
-      subscription_id,
-      metric_id,
-      period_start,
-      period_end,
-      consumed_quantity,
-      reserved_quantity,
-      updated_at
-   )
-   VALUES (
-      $1::uuid,
-      $2::bigint,
-      $3::timestamptz,
-      $4::timestamptz,
-      $5::bigint,
-      0,
-      NOW()
-   )
-   ON CONFLICT (
-      subscription_id,
-      metric_id,
-      period_start,
-      period_end
-   )
-   DO UPDATE SET
-      consumed_quantity =
-          usage_counters.consumed_quantity + EXCLUDED.consumed_quantity,
-      updated_at = NOW()`,
-  [
-    insertedEvent.subscription_id,
-    insertedEvent.metric_id,
-    insertedEvent.period_start,
-    insertedEvent.period_end,
-    insertedEvent.quantity
-  ]
-);
-
-    if (result.rowCount !== 1) {
-      throw new Error(
-        "HiringXChange jobs_posted metric is not configured"
-      );
-    }
-
-    await client.query("COMMIT");
-
-    return {
-      recorded: true,
-      duplicate: false,
-      ...result.rows[0]
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-
-async function consumeUsage({
-  productId,
-  userId,
-  metricKey,
-  quantity = 1,
-  idempotencyKey
-}) {
-  if (!productId || !userId || !metricKey || !idempotencyKey) {
-    throw new Error(
-      "productId, userId, metricKey, and idempotencyKey are required"
-    );
-  }
-
+function validateQuantity(quantity) {
   if (
     typeof quantity !== "number" ||
     !Number.isFinite(quantity) ||
@@ -222,21 +10,104 @@ async function consumeUsage({
   ) {
     throw new Error("quantity must be a positive number");
   }
+}
+
+function getEventTime(value) {
+  const date = value == null ? new Date() : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("occurredAt must be a valid timestamp");
+  }
+
+  return date;
+}
+
+function getUtcMonth(date) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+
+  return {
+    start: new Date(Date.UTC(year, month, 1)),
+    end: new Date(Date.UTC(year, month + 1, 1))
+  };
+}
+
+async function recordUsage({
+  productId,
+  productCode,
+  userId,
+  metricKey,
+  quantity = 1,
+  idempotencyKey,
+  occurredAt,
+  metadata = {}
+}) {
+  if ((!productId && !productCode) || !userId ||
+      !metricKey || !idempotencyKey) {
+    throw new Error(
+      "product, userId, metricKey and idempotencyKey are required"
+    );
+  }
+
+  validateQuantity(quantity);
+
+  const eventTime = getEventTime(occurredAt);
+  const { start: periodStart, end: periodEnd } =
+    getUtcMonth(eventTime);
 
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    // Serialize usage consumption for this product, user, and metric.
-    const lockKey = `${productId}:${userId}:${metricKey}`;
-
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext($1))",
-      [lockKey]
+    const productResult = await client.query(
+      `SELECT id, code
+         FROM products
+        WHERE ${productId ? "id = $1" : "UPPER(code) = UPPER($1)"}
+          AND is_active = TRUE`,
+      [productId || productCode]
     );
 
-    // Find an existing event so retries do not consume usage twice.
+    if (!productResult.rowCount) {
+      const error = new Error("Product is not configured or inactive");
+      error.code = "PRODUCT_NOT_CONFIGURED";
+      throw error;
+    }
+
+    const product = productResult.rows[0];
+
+    const metricResult = await client.query(
+      `SELECT id
+         FROM usage_metrics
+        WHERE product_id = $1
+          AND metric_code = $2
+          AND is_active = TRUE`,
+      [product.id, metricKey]
+    );
+
+    if (!metricResult.rowCount) {
+      const error = new Error(
+        `Usage metric '${metricKey}' is not configured`
+      );
+      error.code = "METRIC_NOT_CONFIGURED";
+      throw error;
+    }
+
+    const metricId = metricResult.rows[0].id;
+
+    // Serialize retries using the idempotency key, including attempts
+    // that reuse a key with a different metric.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [`usage-key:${product.id}:${userId}:${idempotencyKey}`]
+    );
+
+    // Serialize quota consumption for this product/user/metric.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [`usage-quota:${product.id}:${userId}:${metricId}`]
+    );
+
     const existing = await client.query(
       `SELECT e.id, e.quantity, e.period_start, e.period_end,
               e.subscription_id, e.metric_id
@@ -245,26 +116,16 @@ async function consumeUsage({
           AND e.external_user_id = $2::text
           AND e.idempotency_key = $3::text
         LIMIT 1`,
-      [productId, String(userId), String(idempotencyKey)]
+      [product.id, String(userId), String(idempotencyKey)]
     );
 
-    if (existing.rowCount > 0) {
+    if (existing.rowCount) {
       const event = existing.rows[0];
 
-      // Reject reusing the same key for a different metric or quantity.
-      const original = await client.query(
-        `SELECT m.metric_code
-           FROM usage_metrics m
-          WHERE m.id = $1`,
-        [event.metric_id]
-      );
-
       if (
-        original.rows[0]?.metric_code !== metricKey ||
+        String(event.metric_id) !== String(metricId) ||
         Number(event.quantity) !== quantity
       ) {
-        await client.query("ROLLBACK");
-
         const error = new Error(
           "Idempotency-Key was already used with a different request"
         );
@@ -276,6 +137,7 @@ async function consumeUsage({
 
       return {
         allowed: true,
+        recorded: false,
         duplicate: true,
         metricKey,
         quantity: Number(event.quantity),
@@ -285,59 +147,74 @@ async function consumeUsage({
       };
     }
 
-    const eventTime = new Date();
-
-    // Find the active subscription and configured metric for this product.
-    const config = await client.query(
-      `SELECT
-          p.id AS product_id,
-          m.id AS metric_id,
-          m.metric_code,
-          s.id AS subscription_id,
-          date_trunc('month', NOW() AT TIME ZONE 'UTC')
-            AT TIME ZONE 'UTC' AS period_start,
-          (date_trunc('month', NOW() AT TIME ZONE 'UTC')
-            + INTERVAL '1 month') AT TIME ZONE 'UTC' AS period_end
-       FROM products p
-       JOIN usage_metrics m
-         ON m.product_id = p.id
-        AND m.metric_code = $3
-        AND m.is_active = TRUE
-       JOIN LATERAL (
-         SELECT sub.id
-           FROM subscriptions sub
-          WHERE sub.product_id = p.id
-            AND sub.external_user_id = $2::text
-            AND sub.status = 'active'
-            AND sub.starts_at <= NOW()
-            AND sub.expires_at > NOW()
-          ORDER BY sub.starts_at DESC
-          LIMIT 1
-       ) s ON TRUE
-       WHERE p.id = $1`,
-      [productId, String(userId), metricKey]
+    // Select the subscription that was active at the event timestamp.
+    const subscriptionResult = await client.query(
+      `SELECT s.id, s.plan_id
+         FROM subscriptions s
+        WHERE s.product_id = $1
+          AND s.external_user_id = $2::text
+          AND s.status = 'active'
+          AND s.starts_at <= $3::timestamptz
+          AND s.expires_at > $3::timestamptz
+        ORDER BY s.starts_at DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [product.id, String(userId), eventTime]
     );
 
-    if (config.rowCount === 0) {
-      await client.query("ROLLBACK");
-
+    if (!subscriptionResult.rowCount) {
       const error = new Error(
-        "No active subscription or configured metric found"
+        "No active subscription found for this user and event time"
       );
       error.code = "SUBSCRIPTION_NOT_ACTIVE";
       throw error;
     }
 
-    const {
-      product_id,
-      metric_id,
-      subscription_id,
-      period_start,
-      period_end
-    } = config.rows[0];
+    const subscription = subscriptionResult.rows[0];
 
-    // Lock and read the current counter for this subscription/metric/period.
-    const counter = await client.query(
+    // plan_usage_limits is the authoritative limit source.
+    const limitResult = await client.query(
+      `SELECT pul.limit_value, pul.period_type
+         FROM plan_usage_limits pul
+        WHERE pul.product_id = $1
+          AND pul.plan_id = $2
+          AND pul.metric_id = $3
+          AND pul.is_active = TRUE`,
+      [product.id, subscription.plan_id, metricId]
+    );
+
+    if (!limitResult.rowCount) {
+      const error = new Error(
+        "Usage limit is not configured for this plan and metric"
+      );
+      error.code = "USAGE_LIMIT_NOT_CONFIGURED";
+      throw error;
+    }
+
+    const limitRow = limitResult.rows[0];
+    const limit = Number(limitRow.limit_value);
+
+    if (!Number.isFinite(limit)) {
+      throw new Error("Configured usage limit is invalid");
+    }
+
+    // This implementation deliberately uses UTC calendar months.
+    // Reject incompatible limit periods rather than silently applying
+    // monthly accounting to a differently configured limit.
+    if (
+      limitRow.period_type &&
+      !["month", "monthly", "calendar_month"].includes(
+        String(limitRow.period_type).toLowerCase()
+      )
+    ) {
+      const error = new Error(
+        `Unsupported usage limit period: ${limitRow.period_type}`
+      );
+      error.code = "USAGE_PERIOD_NOT_SUPPORTED";
+      throw error;
+    }
+
+    const counterResult = await client.query(
       `SELECT consumed_quantity, reserved_quantity
          FROM usage_counters
         WHERE subscription_id = $1::uuid
@@ -345,61 +222,37 @@ async function consumeUsage({
           AND period_start = $3::timestamptz
           AND period_end = $4::timestamptz
         FOR UPDATE`,
-      [subscription_id, metric_id, period_start, period_end]
+      [
+        subscription.id,
+        metricId,
+        periodStart,
+        periodEnd
+      ]
     );
 
-    const used = counter.rowCount
-      ? Number(counter.rows[0].consumed_quantity) +
-        Number(counter.rows[0].reserved_quantity)
+    const used = counterResult.rowCount
+      ? Number(counterResult.rows[0].consumed_quantity) +
+        Number(counterResult.rows[0].reserved_quantity)
       : 0;
 
-    // IMPORTANT: Replace this query if limits are stored on plan/plan_prices.
-   const limitResult = await client.query(
-  `SELECT pul.limit_value, pul.period_type
-     FROM plan_usage_limits pul
-    WHERE pul.product_id = $1
-      AND pul.plan_id = (
-        SELECT plan_id
-          FROM subscriptions
-         WHERE id = $2
-      )
-      AND pul.metric_id = $3
-      AND pul.is_active = TRUE`,
-  [productId, subscription_id, metric_id]
-);
-
-const limit = limitResult.rows[0]?.limit_value;
-const periodType = limitResult.rows[0]?.period_type;
-
-if (limit == null) {
-  throw new Error(
-    "Usage limit is not configured for this subscription plan and metric"
-  );
-}
-
-    if (limit == null) {
-      await client.query("ROLLBACK");
-
-      throw new Error(
-        "Usage limit is not configured for this metric"
-      );
-    }
-
-    if (Number(limit) >= 0 && used + quantity > Number(limit)) {
+    // A negative limit means unlimited, matching the existing convention.
+    if (limit >= 0 && used + quantity > limit) {
       await client.query("ROLLBACK");
 
       return {
         allowed: false,
+        recorded: false,
         duplicate: false,
         metricKey,
         used,
-        limit: Number(limit),
-        remaining: Math.max(0, Number(limit) - used),
+        limit,
+        remaining: Math.max(0, limit - used),
+        periodStart,
+        periodEnd,
         message: "Usage limit exceeded"
       };
     }
 
-    // Record the usage event.
     const inserted = await client.query(
       `INSERT INTO usage_events (
           product_id,
@@ -416,25 +269,27 @@ if (limit == null) {
        )
        VALUES (
           $1, $2, $3::uuid, $4::text, $4::text, $5::text,
-          $6, $7, $8, $9,
-          jsonb_build_object('metricKey', $10::text)
+          $6, $7::timestamptz, $8::timestamptz,
+          $9::timestamptz, $10::jsonb
        )
-       RETURNING id`,
+       RETURNING id, subscription_id, metric_id, quantity,
+                 occurred_at, period_start, period_end`,
       [
-        product_id,
-        metric_id,
-        subscription_id,
+        product.id,
+        metricId,
+        subscription.id,
         String(userId),
         String(idempotencyKey),
         quantity,
         eventTime,
-        period_start,
-        period_end,
-        metricKey
+        periodStart,
+        periodEnd,
+        JSON.stringify({ ...metadata, metricKey })
       ]
     );
 
-    // Increment the counter in the same transaction.
+    const event = inserted.rows[0];
+
     await client.query(
       `INSERT INTO usage_counters (
           subscription_id,
@@ -454,42 +309,85 @@ if (limit == null) {
             usage_counters.consumed_quantity + EXCLUDED.consumed_quantity,
           updated_at = NOW()`,
       [
-        subscription_id,
-        metric_id,
-        period_start,
-        period_end,
+        subscription.id,
+        metricId,
+        periodStart,
+        periodEnd,
         quantity
       ]
     );
 
     await client.query("COMMIT");
 
+    logger.info(
+      {
+        operation: "usage-recorded",
+        productCode: product.code,
+        userId,
+        metricKey,
+        quantity,
+        eventId: event.id,
+        used: used + quantity,
+        limit
+      },
+      "Usage recorded successfully"
+    );
+
     return {
       allowed: true,
+      recorded: true,
       duplicate: false,
       metricKey,
       quantity,
       used: used + quantity,
-      limit: Number(limit),
-      remaining: Math.max(0, Number(limit) - used - quantity),
-      eventId: inserted.rows[0].id,
-      periodStart: period_start,
-      periodEnd: period_end
+      limit,
+      remaining: limit < 0 ? null : Math.max(0, limit - used - quantity),
+      ...event
     };
   } catch (error) {
     try {
       await client.query("ROLLBACK");
     } catch {
-      // The transaction may already have been rolled back.
+      // Preserve the original error if rollback is no longer possible.
     }
-
     throw error;
   } finally {
     client.release();
   }
 }
 
+async function recordJobPosted({ userId, jobId, occurredAt }) {
+  if (!userId || !jobId) {
+    throw new Error("userId and jobId are required");
+  }
 
+  const result = await recordUsage({
+    productCode: "HIRINGXCHANGE",
+    userId,
+    metricKey: "jobs_posted",
+    quantity: 1,
+    idempotencyKey: String(jobId),
+    occurredAt,
+    metadata: { jobId: String(jobId) }
+  });
 
+  return result;
+}
+
+async function consumeUsage({
+  productId,
+  userId,
+  metricKey,
+  quantity = 1,
+  idempotencyKey
+}) {
+  return recordUsage({
+    productId,
+    userId,
+    metricKey,
+    quantity,
+    idempotencyKey
+  });
+}
 
 export { recordJobPosted, consumeUsage };
