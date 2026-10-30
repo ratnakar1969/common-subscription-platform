@@ -2,7 +2,9 @@
 import express from "express";
 import {
   recordJobPosted,
-  consumeUsage
+  consumeUsage,
+  publishActiveListing,
+  unpublishActiveListing
 } from "./usageService.js";
 import authProduct from "../../middleware/authProduct.js";
 import logger from "../../config/logger.js";
@@ -25,7 +27,8 @@ function sendUsageError(res, error, operation) {
     USAGE_LIMIT_NOT_CONFIGURED: [500, error.message],
     USAGE_PERIOD_NOT_SUPPORTED: [500, error.message],
     SUBSCRIPTION_NOT_ACTIVE: [403, error.message],
-    IDEMPOTENCY_CONFLICT: [409, error.message]
+    IDEMPOTENCY_CONFLICT: [409, error.message],
+    PRODUCT_NOT_SUPPORTED: [403, error.message],
   };
 
   const [status, message] = responses[error.code] ||
@@ -131,5 +134,53 @@ router.post("/consume", authProduct, async (req, res) => {
     return sendUsageError(res, error, "consume-usage");
   }
 });
+
+
+async function handleActiveListing(req, res, action) {
+  try {
+    const { userId, propertyId } = req.body || {};
+    const idempotencyKey = req.get("Idempotency-Key");
+
+    if (!userId || !propertyId || !idempotencyKey) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "userId, propertyId and Idempotency-Key header are required"
+      });
+    }
+
+    if (req.product?.code?.toUpperCase() !== "FLATSXCHANGE") {
+      return res.status(403).json({
+        success: false,
+        message: "This endpoint is only for FlatsXchange"
+      });
+    }
+
+    const operation =
+      action === "published"
+        ? publishActiveListing
+        : unpublishActiveListing;
+
+    const result = await operation({
+      productId: req.product.id,
+      userId,
+      propertyId,
+      idempotencyKey
+    });
+
+    return sendUsageResult(res, result);
+  } catch (error) {
+    return sendUsageError(res, error, `active-listing-${action}`);
+  }
+}
+
+router.post("/active-listings/publish", authProduct, (req, res) =>
+  handleActiveListing(req, res, "published")
+);
+
+router.post("/active-listings/unpublish", authProduct, (req, res) =>
+  handleActiveListing(req, res, "unpublished")
+);
+
 
 export default router;
